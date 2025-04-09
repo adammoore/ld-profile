@@ -7,12 +7,19 @@ This module contains the UI for updating missing person information.
 import datetime
 import streamlit as st
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
 
 from config import ICONS
 from models import MISSING_PERSON_REQUIRED_FIELDS
-from utils import save_uploaded_image
+from utils import save_uploaded_image, generate_short_summary
 from database import get_database_manager
+
+# Try to import the geolocation component
+try:
+    from streamlit_geolocation import streamlit_geolocation
+    GEOLOCATION_AVAILABLE = True
+except ImportError:
+    GEOLOCATION_AVAILABLE = False
 
 
 def render_missing_person_form() -> None:
@@ -86,12 +93,6 @@ def render_missing_person_form() -> None:
                 value=default_time,
                 help="The approximate time when the person was last seen"
             )
-            
-            last_seen_location = st.text_input(
-                "Location Last Seen", 
-                value=profile_data.get('last_seen_location', ''),
-                help="The address or detailed description of where the person was last seen"
-            )
         
         with col2:
             last_seen_wearing = st.text_area(
@@ -105,6 +106,47 @@ def render_missing_person_form() -> None:
                 value=profile_data.get('reference_number', ''),
                 help="Any reference number provided by police for the missing person case"
             )
+        
+        # Location information with geolocation support
+        st.write("### Location Information")
+        
+        # Geolocation widget if available
+        location_lat, location_lng = None, None
+        if GEOLOCATION_AVAILABLE:
+            st.write("You can use your current location or enter a location manually.")
+            
+            location_col1, location_col2 = st.columns([1, 3])
+            with location_col1:
+                use_current_location = st.checkbox(
+                    "Use my current location", 
+                    value=False,
+                    help="Use your browser's geolocation to get your current coordinates"
+                )
+            
+            if use_current_location:
+                with location_col2:
+                    # Get location from browser
+                    loc = streamlit_geolocation()
+                    if loc:
+                        location_lat = loc['latitude']
+                        location_lng = loc['longitude']
+                        st.success(f"Location detected: {location_lat:.6f}, {location_lng:.6f}")
+                    else:
+                        st.info("Waiting for location permission...")
+        
+        # Show the location input field
+        last_seen_location = st.text_input(
+            "Location Last Seen", 
+            value=profile_data.get('last_seen_location', ''),
+            help="The address or detailed description of where the person was last seen"
+        )
+        
+        # If we have coordinates from geolocation, append them to the location
+        if location_lat and location_lng:
+            if last_seen_location:
+                last_seen_location += f" (Coordinates: {location_lat:.6f}, {location_lng:.6f})"
+            else:
+                last_seen_location = f"Coordinates: {location_lat:.6f}, {location_lng:.6f}"
         
         # Additional images for missing person poster
         st.write("### Additional Photos")
@@ -154,21 +196,35 @@ def render_missing_person_form() -> None:
         st.write("### Additional Information for Missing Person Poster")
         st.write("Please provide short, concise versions of key information for the poster (limit to 1-2 sentences)")
         
+        # Generate short summaries from the full information
+        default_medical_short = profile_data.get('medical_info_short', '')
+        if not default_medical_short and profile_data.get('medical_info'):
+            default_medical_short = generate_short_summary(profile_data.get('medical_info', ''))
+        
+        default_communication_short = profile_data.get('communication_short', '')
+        if not default_communication_short and profile_data.get('communication'):
+            default_communication_short = generate_short_summary(profile_data.get('communication', ''))
+        
+        default_places_short = profile_data.get('places_might_go_short', '')
+        if not default_places_short and profile_data.get('places_might_go'):
+            default_places_short = generate_short_summary(profile_data.get('places_might_go', ''))
+        
+        # Display the short summary inputs with generated defaults
         medical_info_short = st.text_input(
             "Medical Information (short version)", 
-            value=profile_data.get('medical_info_short', ''),
+            value=default_medical_short,
             help="Brief summary of critical medical needs that emergency responders should know"
         )
         
         communication_short = st.text_input(
             "Communication (short version)", 
-            value=profile_data.get('communication_short', ''),
+            value=default_communication_short,
             help="Brief summary of how to communicate effectively with the person"
         )
         
         places_might_go_short = st.text_input(
             "Places They Might Go (short version)", 
-            value=profile_data.get('places_might_go_short', ''),
+            value=default_places_short,
             help="Brief list of the most likely locations to check first"
         )
         
