@@ -220,3 +220,51 @@ def cleanup_old_files(max_age_days: int = 30) -> int:
         logger.error(f"Error cleaning up old files: {str(e)}")
     
     return count
+
+def generate_short_summary(text: str, max_words: int = 15) -> str:
+    """
+    Generate a shorter summary of a longer text.
+    
+    Args:
+        text: The original text to summarize
+        max_words: Maximum number of words in the summary
+        
+    Returns:
+        A shorter version of the original text
+    """
+    if not text:
+        return ""
+    
+    # Simple summarization: take the first sentence or first N words
+    sentences = text.split('.')
+    first_sentence = sentences[0].strip()
+    
+    words = first_sentence.split()
+    if len(words) <= max_words:
+        return first_sentence
+    
+    # Take the first max_words words and add ellipsis
+    short_summary = ' '.join(words[:max_words]) + '...'
+    return short_summary
+
+def get_browser_location() -> Tuple[Optional[float], Optional[float]]:
+    """
+    Get the user's location from the browser if available.
+    
+    Returns:
+        Tuple of (latitude, longitude) or (None, None) if not available
+    """
+    try:
+        # This uses the Streamlit Geolocation component
+        # Make sure to install with: pip install streamlit-geolocation
+        from streamlit_geolocation import streamlit_geolocation
+        
+        location = streamlit_geolocation()
+        if location:
+            return location['latitude'], location['longitude']
+    except ImportError:
+        logger.warning("streamlit-geolocation is not installed. Install with: pip install streamlit-geolocation")
+    except Exception as e:
+        logger.error(f"Error getting browser location: {str(e)}")
+        
+    return None, None
