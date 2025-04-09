@@ -9,16 +9,32 @@ A Streamlit application for creating and managing profiles for young people with
 - **Document Generation**: Generate PDF one-page profiles and missing person posters
 - **Image Management**: Upload and manage profile photos and additional images
 - **GDPR Compliant**: Built with UK data protection laws in mind
-- **Secure Storage**: Database or local encrypted storage of sensitive information
+- **Secure Storage**: Database-backed with encryption for sensitive information
 
-## Background
+## Application Structure
 
-This application was developed to support the implementation of the Herbert and Philomena protocols in the UK. These protocols help gather important information about vulnerable people that can be shared with emergency services if they go missing.
+The application has been refactored into a modular structure:
 
-- **Herbert Protocol**: Designed for people with dementia or memory impairment
-- **Philomena Protocol**: Focused on young people and individuals with learning disabilities
-
-The one-page profile approach is widely used in person-centered care to clearly communicate how best to support an individual.
+```
+learning-disability-profile/
+├── app.py                 # Main application entry point
+├── config.py              # Configuration settings
+├── database.py            # Database connection and operations
+├── models.py              # Data models and schemas
+├── pdf_generator.py       # PDF generation functionality
+├── utils.py               # Utility functions
+├── ui/                    # UI components
+│   ├── __init__.py
+│   ├── profile_form.py
+│   ├── missing_person_form.py
+│   ├── document_generator.py
+│   └── sidebar.py
+├── data/                  # Data directory (created at runtime)
+│   ├── profile_data/      # Profile data storage
+│   └── profiles.db        # SQLite database
+├── requirements.txt       # Python dependencies
+└── README.md              # This file
+```
 
 ## Installation
 
@@ -41,22 +57,12 @@ The one-page profile approach is widely used in person-centered care to clearly 
    pip install -r requirements.txt
    ```
 
-4. (Optional) For database support:
-   ```bash
-   pip install sqlalchemy pymysql cryptography
-   ```
-
-5. Create required directories:
-   ```bash
-   mkdir -p profile_data
-   ```
-
-6. Run the application:
+4. Run the application:
    ```bash
    streamlit run app.py
    ```
 
-7. Open your browser and navigate to `http://localhost:8501`
+5. Open your browser and navigate to `http://localhost:8501`
 
 ### Streamlit Cloud Deployment
 
@@ -67,18 +73,43 @@ This application can be directly deployed to Streamlit Cloud:
 3. Create a new app, pointing to your forked repository
 4. Select the main branch and app.py as the entry point
 
+## Database Configuration
+
+The application uses SQLite as the default database. The database file is created at `data/profiles.db`.
+
+### Using a Different Database
+
+To use a different database backend, update the database settings in `config.py`:
+
+```python
+# For MySQL
+DB_TYPE = "mysql"
+DB_USER = "yourusername"
+DB_PASSWORD = "yourpassword"
+DB_HOST = "localhost"
+DB_PORT = "3306"
+DB_NAME = "profiles"
+
+# For PostgreSQL
+DB_TYPE = "postgresql"
+DB_USER = "yourusername"
+DB_PASSWORD = "yourpassword"
+DB_HOST = "localhost"
+DB_PORT = "5432"
+DB_NAME = "profiles"
+```
+
+For production deployments, you can use environment variables or Streamlit secrets to store database credentials securely.
+
 ## Usage
 
 ### Creating a Profile
 
 1. Select "Create New Profile" from the sidebar
 2. Fill in the person's details in the form
-   - Basic personal information
-   - Physical description (height, build, etc.)
-   - One-page profile information (what's important, how to support, etc.)
-   - Herbert/Philomena protocol information
 3. Upload a profile picture if available
-4. Click "Save Profile"
+4. Complete all sections, including the one-page profile information and Herbert/Philomena Protocol details
+5. Click "Save Profile"
 
 ### Updating Missing Person Information
 
@@ -95,42 +126,16 @@ This application can be directly deployed to Streamlit Cloud:
 3. Click "Generate One-Page Profile" or "Generate Missing Person Poster"
 4. Download the resulting PDF
 
-## Data Storage Options
-
-The application supports two storage options:
-
-1. **Session Storage** (Default): Data is stored in the browser session and will be lost when the browser is closed
-2. **Database Storage**: For persistent storage, the application can use SQLAlchemy with various database backends
-
-To enable database storage, ensure `db_helper.py` is in the same directory as `app.py` and install the required dependencies.
-
 ## Data Privacy & GDPR
 
 This application is designed with UK GDPR compliance in mind:
 
-- Data is encrypted for security
+- Data is encrypted before storage in the database
+- Data is stored locally by default (SQLite)
 - Clear purpose limitation and data minimization
-- Support for data subject rights (access, rectification, erasure)
+- Support for data subject rights
 - Appropriate security measures for sensitive personal data
-
-For organizational use, consider implementing additional security measures as outlined in the GDPR documentation.
 
 ## Customization
 
-You can customize the application appearance by modifying the `.streamlit/config.toml` file.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
-
-## Author
-
-Created by Adam Vials Moore
-
----
-
-This project is intended to support individuals with learning disabilities and their caregivers. It is not a replacement for professional advice or established safeguarding procedures.
+You can customize the application appearance and behavior
