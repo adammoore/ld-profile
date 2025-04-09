@@ -234,18 +234,18 @@ def create_missing_person_poster(profile_data: Dict[str, Any]) -> BinaryIO:
     poster.add_page()
     
     # Add profile image if available
-        profile_image = profile_data.get('profile_image')
-        if profile_image and os.path.exists(profile_image):
-            try:
-                # FPDF expects file paths as str objects, not bytes
-                # First, ensure the profile_image is a string
-                if isinstance(profile_image, bytes):
-                    profile_image = profile_image.decode('utf-8')
-                
-                poster.image(profile_image, x=75, y=40, w=60, h=60)
-            except Exception as e:
-                logger.error(f"Error adding profile image to poster: {str(e)}")
+    profile_image = profile_data.get('profile_image')
+    if profile_image and os.path.exists(profile_image):
+        try:
+            # FPDF expects file paths as str objects, not bytes
+            # First, ensure the profile_image is a string
+            if isinstance(profile_image, bytes):
+                profile_image = profile_image.decode('utf-8')
             
+            poster.image(profile_image, x=75, y=40, w=60, h=60)
+        except Exception as e:
+            logger.error(f"Error adding profile image to poster: {str(e)}")
+    
     # Add description
     poster.ln(70)
     poster.set_font('Arial', 'B', 12)
@@ -288,6 +288,11 @@ def create_missing_person_poster(profile_data: Dict[str, Any]) -> BinaryIO:
     # Output PDF bytes to buffer correctly
     try:
         pdf_bytes = poster.output(dest='S')  # 'S' means return as string/bytes
+        
+        # Make sure we're writing bytes, not str
+        if isinstance(pdf_bytes, str):
+            pdf_bytes = pdf_bytes.encode('latin1')  # FPDF uses latin1 encoding
+            
         pdf_buffer.write(pdf_bytes)
         logger.info(f"Missing person poster created successfully for {profile_data.get('name', 'unknown')}")
     except Exception as e:
