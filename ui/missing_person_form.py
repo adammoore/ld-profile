@@ -107,7 +107,7 @@ def render_missing_person_form() -> None:
                 help="Any reference number provided by police for the missing person case"
             )
         
-        # Location information with geolocation support
+        # Location information with optional geolocation support
         st.write("### Location Information")
         
         # Geolocation widget if available
@@ -126,13 +126,19 @@ def render_missing_person_form() -> None:
             if use_current_location:
                 with location_col2:
                     # Get location from browser
-                    loc = streamlit_geolocation()
-                    if loc:
-                        location_lat = loc['latitude']
-                        location_lng = loc['longitude']
-                        st.success(f"Location detected: {location_lat:.6f}, {location_lng:.6f}")
-                    else:
-                        st.info("Waiting for location permission...")
+                    try:
+                        loc = streamlit_geolocation()
+                        if loc:
+                            location_lat = loc['latitude']
+                            location_lng = loc['longitude']
+                            st.success(f"Location detected: {location_lat:.6f}, {location_lng:.6f}")
+                        else:
+                            st.info("Waiting for location permission...")
+                    except Exception as e:
+                        st.error(f"Error accessing geolocation: {str(e)}")
+                        st.info("Please enter the location manually below.")
+        else:
+            st.info("Geolocation is not available. Please enter the location manually.")
         
         # Show the location input field
         last_seen_location = st.text_input(
