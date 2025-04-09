@@ -394,37 +394,52 @@ def create_missing_person_poster(profile_data: Dict[str, Any]) -> BinaryIO:
                 
                 # Try to generate and add a QR code for the Google Maps link
                 try:
+                    # Try to import qrcode library
                     import qrcode
+                    import qrcode.image.pil
                     from PIL import Image
-                    
-                    # Generate QR code containing the Google Maps URL
-                    qr = qrcode.QRCode(
-                        version=1,
-                        error_correction=qrcode.constants.ERROR_CORRECT_L,
-                        box_size=10,
-                        border=4,
-                    )
-                    qr.add_data(google_maps_url)
-                    qr.make(fit=True)
-                    
-                    # Create an image from the QR Code
-                    img = qr.make_image(fill_color="black", back_color="white")
-                    
-                    # Save the QR code to a temporary file
-                    qr_temp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-                    img.save(qr_temp.name)
-                    qr_temp.close()
-                    
-                    # Add the QR code to the PDF (centered)
-                    poster.image(qr_temp.name, x=85, y=poster.get_y() + 10, w=40, h=40)
-                    
-                    # Clean up the temporary file
-                    os.unlink(qr_temp.name)
+                    qrcode_available = True
                 except ImportError:
-                    # If qrcode library is not available, just skip the QR code
+                    qrcode_available = False
+                    logger.warning("QR code library not installed, skipping QR code generation")
+                    # Add message to the PDF
+                    poster.ln(5)
+                    poster.set_font('Arial', 'I', 10)
                     poster.multi_cell(0, 8, "QR code generation not available. Please use the URL above.")
-                except Exception as e:
-                    logger.error(f"Error generating QR code: {str(e)}")
+                    poster.set_font('Arial', '', 12)
+                    
+                if qrcode_available:
+                    try:
+                        # Generate QR code
+                        qr = qrcode.QRCode(
+                            version=1,
+                            error_correction=qrcode.constants.ERROR_CORRECT_L,
+                            box_size=10,
+                            border=4,
+                        )
+                        qr.add_data(google_maps_url)
+                        qr.make(fit=True)
+                        
+                        # Create an image from the QR Code
+                        img = qr.make_image(fill_color="black", back_color="white")
+                        
+                        # Save the QR code to a temporary file
+                        qr_temp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+                        img.save(qr_temp.name)
+                        qr_temp.close()
+                        
+                        # Add the QR code to the PDF (centered)
+                        poster.image(qr_temp.name, x=85, y=poster.get_y() + 10, w=40, h=40)
+                        
+                        # Clean up
+                        os.unlink(qr_temp.name)
+                    except Exception as e:
+                        logger.error(f"Error generating QR code: {str(e)}")
+                        # Add error message to the PDF
+                        poster.ln(5)
+                        poster.set_font('Arial', 'I', 10)
+                        poster.multi_cell(0, 8, "Error generating QR code. Please use the URL above.")
+                        poster.set_font('Arial', '', 12)
                 
                 # Clean up the temporary map file
                 tmp.close()
