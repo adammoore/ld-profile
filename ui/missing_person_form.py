@@ -128,18 +128,21 @@ def render_missing_person_form() -> None:
                     # Get location from browser
                     try:
                         loc = streamlit_geolocation()
-                        if loc:
+                        if loc and isinstance(loc, dict) and 'latitude' in loc and 'longitude' in loc:
                             location_lat = loc['latitude']
                             location_lng = loc['longitude']
-                            st.success(f"Location detected: {location_lat:.6f}, {location_lng:.6f}")
+                            if location_lat is not None and location_lng is not None:
+                                st.success(f"Location detected: {location_lat:.6f}, {location_lng:.6f}")
+                            else:
+                                st.info("Waiting for location data...")
                         else:
                             st.info("Waiting for location permission...")
                     except Exception as e:
                         st.error(f"Error accessing geolocation: {str(e)}")
                         st.info("Please enter the location manually below.")
-        else:
-            st.info("Geolocation is not available. Please enter the location manually.")
-        
+            else:
+            st.info("Geolocation is not available. Please enter the location manually.") 
+            
         # Show the location input field
         last_seen_location = st.text_input(
             "Location Last Seen", 
