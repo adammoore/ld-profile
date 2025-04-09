@@ -18,6 +18,13 @@ from fpdf import FPDF
 import shutil
 from cryptography.fernet import Fernet
 
+# Import the database helper
+try:
+    from db_helper import DatabaseHelper
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
+
 # Set page config
 st.set_page_config(
     page_title="Learning Disability Profile Creator",
@@ -35,6 +42,11 @@ if 'encryption_key' not in st.session_state:
     # Generate a key for encryption (in production, store securely)
     st.session_state.encryption_key = Fernet.generate_key()
     st.session_state.cipher_suite = Fernet(st.session_state.encryption_key)
+if 'use_database' not in st.session_state:
+    st.session_state.use_database = DB_AVAILABLE
+if 'db' not in st.session_state and st.session_state.use_database and DB_AVAILABLE:
+    # Initialize database connection
+    st.session_state.db = DatabaseHelper(st.session_state.encryption_key)
 
 # Data storage functions
 def encrypt_data(data):
@@ -54,31 +66,46 @@ def save_profile(profile_data):
     
     profile_data['last_updated'] = datetime.datetime.now().isoformat()
     
-    # Store in session state for now (in production, use secure database)
-    st.session_state.profiles[profile_data['profile_id']] = profile_data
+    # Determine whether to use database or session state
+    if st.session_state.use_database and DB_AVAILABLE:
+        # Save to database
+        st.session_state.db.save_profile(profile_data)
+    else:
+        # Store in session state as fallback
+        st.session_state.profiles[profile_data['profile_id']] = profile_data
+    
     st.session_state.current_profile_id = profile_data['profile_id']
-    
-    # In production: encrypt and store in database with proper access controls
-    # encrypted_data = encrypt_data(profile_data)
-    # db.insert_profile(profile_data['profile_id'], encrypted_data)
-    
     return profile_data['profile_id']
 
 def load_profile(profile_id):
     """Load profile from storage"""
-    # In production: fetch from database and decrypt
-    # encrypted_data = db.get_profile(profile_id)
-    # return decrypt_data(encrypted_data)
-    
-    return st.session_state.profiles.get(profile_id)
+    if st.session_state.use_database and DB_AVAILABLE:
+        # Load from database
+        return st.session_state.db.load_profile(profile_id)
+    else:
+        # Load from session state as fallback
+        return st.session_state.profiles.get(profile_id)
 
 def delete_profile(profile_id):
     """Delete profile from storage (with proper audit trail)"""
-    if profile_id in st.session_state.profiles:
-        # In production: soft delete with audit trail
-        del st.session_state.profiles[profile_id]
-        return True
+    if st.session_state.use_database and DB_AVAILABLE:
+        # Delete from database
+        return st.session_state.db.delete_profile(profile_id)
+    else:
+        # Delete from session state as fallback
+        if profile_id in st.session_state.profiles:
+            del st.session_state.profiles[profile_id]
+            return True
     return False
+
+def get_all_profiles():
+    """Get all profiles from storage"""
+    if st.session_state.use_database and DB_AVAILABLE:
+        # Get all profiles from database
+        return st.session_state.db.get_all_profiles()
+    else:
+        # Get all profiles from session state as fallback
+        return st.session_state.profiles
 
 # Image handling functions
 def save_uploaded_image(uploaded_file, profile_id, image_type):
@@ -123,15 +150,36 @@ def create_profile_pdf(profile_data):
         bottomMargin=72
     )
     
+    # Get the sample styles
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name='Heading1', fontSize=18, spaceAfter=12))
-    styles.add(ParagraphStyle(name='Heading2', fontSize=14, spaceAfter=8, spaceBefore=14))
-    styles.add(ParagraphStyle(name='Normal', fontSize=12, spaceAfter=6))
+    
+    # Create custom styles instead of adding to the stylesheet
+    heading1_style = ParagraphStyle(
+        'CustomHeading1', 
+        parent=styles['Heading1'],
+        fontSize=18, 
+        spaceAfter=12
+    )
+    
+    heading2_style = ParagraphStyle(
+        'CustomHeading2', 
+        parent=styles['Heading2'],
+        fontSize=14, 
+        spaceAfter=8, 
+        spaceBefore=14
+    )
+    
+    normal_style = ParagraphStyle(
+        'CustomNormal', 
+        parent=styles['Normal'],
+        fontSize=12, 
+        spaceAfter=6
+    )
     
     story = []
     
     # Title
-    story.append(Paragraph(f"One-Page Profile: {profile_data.get('name', '')}", styles["Heading1"]))
+    story.append(Paragraph(f"One-Page Profile: {profile_data.get('name', '')}", heading1_style))
     story.append(Spacer(1, 0.3*inch))
     
     # Add profile image
@@ -165,10 +213,10 @@ def create_profile_pdf(profile_data):
     story.append(Spacer(1, 0.3*inch))
     
     # Herbert Protocol sections
-    story.append(Paragraph("Important Information to Keep Me Safe", styles["Heading2"]))
+    story.append(Paragraph("Important Information to Keep Me Safe", heading2_style))
     
     # Physical description
-    story.append(Paragraph("Physical Description:", styles["Heading2"]))
+    story.append(Paragraph("Physical Description:", heading2_style))
     description_data = [
         ['Height', profile_data.get('height', '')],
         ['Build', profile_data.get('build', '')],
@@ -193,37 +241,37 @@ def create_profile_pdf(profile_data):
     story.append(Spacer(1, 0.2*inch))
     
     # What's important to me section (from one-page profiles)
-    story.append(Paragraph("What's Important To Me:", styles["Heading2"]))
-    story.append(Paragraph(profile_data.get('important_to_me', ''), styles["Normal"]))
+    story.append(Paragraph("What's Important To Me:", heading2_style))
+    story.append(Paragraph(profile_data.get('important_to_me', ''), normal_style))
     story.append(Spacer(1, 0.2*inch))
     
     # How to support me section (from one-page profiles)
-    story.append(Paragraph("How Best To Support Me:", styles["Heading2"]))
-    story.append(Paragraph(profile_data.get('how_to_support', ''), styles["Normal"]))
+    story.append(Paragraph("How Best To Support Me:", heading2_style))
+    story.append(Paragraph(profile_data.get('how_to_support', ''), normal_style))
     story.append(Spacer(1, 0.2*inch))
     
     # Communication section
-    story.append(Paragraph("How I Communicate:", styles["Heading2"]))
-    story.append(Paragraph(profile_data.get('communication', ''), styles["Normal"]))
+    story.append(Paragraph("How I Communicate:", heading2_style))
+    story.append(Paragraph(profile_data.get('communication', ''), normal_style))
     story.append(Spacer(1, 0.2*inch))
     
     # Medical information
-    story.append(Paragraph("Medical Information:", styles["Heading2"]))
-    story.append(Paragraph(profile_data.get('medical_info', ''), styles["Normal"]))
+    story.append(Paragraph("Medical Information:", heading2_style))
+    story.append(Paragraph(profile_data.get('medical_info', ''), normal_style))
     story.append(Spacer(1, 0.2*inch))
     
     # Places I might go section (Herbert Protocol)
-    story.append(Paragraph("Places I Might Go:", styles["Heading2"]))
-    story.append(Paragraph(profile_data.get('places_might_go', ''), styles["Normal"]))
+    story.append(Paragraph("Places I Might Go:", heading2_style))
+    story.append(Paragraph(profile_data.get('places_might_go', ''), normal_style))
     story.append(Spacer(1, 0.2*inch))
     
     # Travel patterns and routines
-    story.append(Paragraph("Travel Patterns and Routines:", styles["Heading2"]))
-    story.append(Paragraph(profile_data.get('travel_routines', ''), styles["Normal"]))
+    story.append(Paragraph("Travel Patterns and Routines:", heading2_style))
+    story.append(Paragraph(profile_data.get('travel_routines', ''), normal_style))
     
     # Footer with data protection notice
     story.append(Spacer(1, 0.5*inch))
-    story.append(Paragraph("CONFIDENTIAL - Data Protection: This document contains personal data subject to GDPR. Handle according to data protection policies.", styles["Normal"]))
+    story.append(Paragraph("CONFIDENTIAL - Data Protection: This document contains personal data subject to GDPR. Handle according to data protection policies.", normal_style))
     
     doc.build(story)
     
@@ -288,7 +336,10 @@ def create_missing_person_poster(profile_data):
     poster.cell(0, 8, 'Police: 101 or 999 in an emergency', 0, 1, 'C')
     poster.cell(0, 8, f"Reference: {profile_data.get('reference_number', 'Please quote name')}", 0, 1, 'C')
     
-    poster.output(pdf_buffer)
+    # Use the BytesIO object correctly with FPDF
+    # Note: We need to get the PDF as bytes first, then write to the buffer
+    pdf_bytes = poster.output(dest='S')  # 'S' means return as string/bytes
+    pdf_buffer.write(pdf_bytes)
     
     return pdf_buffer
 
@@ -307,14 +358,35 @@ def profile_form():
     # Basic information
     col1, col2 = st.columns(2)
     with col1:
-        name = st.text_input("Full Name", value=profile_data.get('name', ''))
-        dob = st.date_input("Date of Birth", value=None if not profile_data.get('dob') else pd.to_datetime(profile_data.get('dob')))
-        nhs_number = st.text_input("NHS Number", value=profile_data.get('nhs_number', ''))
-        emergency_contact = st.text_input("Emergency Contact Details", value=profile_data.get('emergency_contact', ''))
+        name = st.text_input("Full Name", value=profile_data.get('name', ''),
+                           help="The person's full legal name")
+        
+        dob = st.date_input("Date of Birth", 
+                          value=None if not profile_data.get('dob') else pd.to_datetime(profile_data.get('dob')),
+                          help="The person's date of birth")
+        
+        # Calculate age from DOB if available
+        if dob:
+            today = datetime.date.today()
+            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            age_display = f"{age} years"
+        else:
+            age_display = "Not specified"
+            age = ""
+        
+        st.write(f"**Age:** {age_display}")
+        
+        nhs_number = st.text_input("NHS Number", value=profile_data.get('nhs_number', ''),
+                                 help="10-digit NHS number for medical identification")
+        
+        emergency_contact = st.text_input("Emergency Contact Details", 
+                                        value=profile_data.get('emergency_contact', ''),
+                                        help="Name and phone number of primary emergency contact")
     
     with col2:
         # Profile image upload
         st.write("Profile Photo")
+        st.write("Upload a clear, recent photo of the person's face")
         profile_image = st.file_uploader("Upload a profile photo", type=["jpg", "jpeg", "png"])
         if profile_image:
             st.image(profile_image, width=150)
@@ -323,42 +395,106 @@ def profile_form():
     
     # Physical description
     st.write("### Physical Description")
+    st.write("These details help identify the person if they become missing")
+    
     col1, col2 = st.columns(2)
     with col1:
-        height = st.text_input("Height", value=profile_data.get('height', ''))
-        build = st.text_input("Build", value=profile_data.get('build', ''))
-        hair = st.text_input("Hair Color and Style", value=profile_data.get('hair', ''))
+        # Height selector with cm
+        height_cm = st.number_input("Height (cm)", 
+                                  min_value=30, max_value=250, 
+                                  value=int(profile_data.get('height_cm', 170)),
+                                  help="Height in centimeters")
+        
+        # Convert to formatted display
+        height = f"{height_cm} cm ({height_cm//30.48} ft {round((height_cm%30.48)/2.54)} in)"
+        
+        # Weight selector with kg
+        weight_kg = st.number_input("Weight (kg)",
+                                  min_value=1, max_value=250,
+                                  value=int(profile_data.get('weight_kg', 70)),
+                                  help="Weight in kilograms")
+        
+        # Convert to formatted display
+        weight = f"{weight_kg} kg ({round(weight_kg*2.2)} lbs)"
+        
+        build_options = ["Slim", "Average", "Athletic", "Heavy", "Other"]
+        build = st.selectbox("Build", 
+                           options=build_options,
+                           index=build_options.index(profile_data.get('build', 'Average')) if profile_data.get('build') in build_options else 0,
+                           help="General body build/frame")
+        
+        if build == "Other":
+            build = st.text_input("Please specify build", value=profile_data.get('build_other', ''))
     
     with col2:
-        eyes = st.text_input("Eye Color", value=profile_data.get('eyes', ''))
-        distinguishing_features = st.text_area("Distinguishing Features", value=profile_data.get('distinguishing_features', ''))
+        hair_color_options = ["Black", "Brown", "Blonde", "Red", "Grey", "White", "Other"]
+        hair_color = st.selectbox("Hair Color", 
+                                options=hair_color_options,
+                                index=hair_color_options.index(profile_data.get('hair_color', 'Brown')) if profile_data.get('hair_color') in hair_color_options else 0,
+                                help="Primary hair color")
+        
+        if hair_color == "Other":
+            hair_color = st.text_input("Please specify hair color", value=profile_data.get('hair_color_other', ''))
+        
+        hair_style = st.text_input("Hair Style", value=profile_data.get('hair_style', ''),
+                                help="Current hairstyle (e.g., short, long, curly, straight)")
+        
+        eye_color_options = ["Brown", "Blue", "Green", "Hazel", "Grey", "Other"]
+        eye_color = st.selectbox("Eye Color", 
+                               options=eye_color_options,
+                               index=eye_color_options.index(profile_data.get('eye_color', 'Brown')) if profile_data.get('eye_color') in eye_color_options else 0,
+                               help="Eye color")
+        
+        if eye_color == "Other":
+            eye_color = st.text_input("Please specify eye color", value=profile_data.get('eye_color_other', ''))
+    
+    # Combine hair details
+    hair = f"{hair_color} {hair_style}" if hair_style else hair_color
+    
+    # Distinguishing features section
+    st.write("### Distinguishing Features")
+    st.write("Any notable physical characteristics that would help identify the person")
+    
+    distinguishing_features = st.text_area("Distinguishing Features", 
+                                         value=profile_data.get('distinguishing_features', ''),
+                                         help="Birthmarks, scars, tattoos, or other noticeable features")
     
     # One-page profile sections
     st.write("### One-Page Profile Information")
-    important_to_me = st.text_area("What's Important To Me", value=profile_data.get('important_to_me', ''), 
-                                  help="Describe what matters most to the person, their preferences, interests, and values")
+    st.write("This information helps others understand and support the person effectively")
     
-    how_to_support = st.text_area("How Best To Support Me", value=profile_data.get('how_to_support', ''),
-                                 help="Describe the best ways to provide support, including approaches that work well")
+    important_to_me = st.text_area("What's Important To Me", 
+                                 value=profile_data.get('important_to_me', ''), 
+                                 help="Describe what matters most to the person - their preferences, interests, routines, and values")
     
-    communication = st.text_area("How I Communicate", value=profile_data.get('communication', ''),
-                               help="Describe communication methods, preferences, and any communication aids used")
+    how_to_support = st.text_area("How Best To Support Me", 
+                                value=profile_data.get('how_to_support', ''),
+                                help="Describe the best ways to provide support, including approaches that work well and those to avoid")
+    
+    communication = st.text_area("How I Communicate", 
+                              value=profile_data.get('communication', ''),
+                              help="Describe communication methods, preferences, any communication aids used, and how the person expresses themselves")
     
     # Herbert/Philomena Protocol sections
     st.write("### Additional Information (Herbert/Philomena Protocol)")
-    medical_info = st.text_area("Medical Information", value=profile_data.get('medical_info', ''),
-                              help="Include medications, conditions, allergies, and other health information")
+    st.write("This information is essential if the person becomes missing")
     
-    places_might_go = st.text_area("Places I Might Go", value=profile_data.get('places_might_go', ''),
-                                 help="List places the person might go if missing - previous homes, favorite places, etc.")
+    medical_info = st.text_area("Medical Information", 
+                             value=profile_data.get('medical_info', ''),
+                             help="Include medications, conditions, allergies, and any health needs requiring urgent attention")
     
-    travel_routines = st.text_area("Travel Patterns and Routines", value=profile_data.get('travel_routines', ''),
-                                 help="Describe how the person typically travels, regular routes, and routines")
+    places_might_go = st.text_area("Places I Might Go", 
+                                value=profile_data.get('places_might_go', ''),
+                                help="List places the person might go if missing - previous homes, favorite places, familiar locations, etc.")
+    
+    travel_routines = st.text_area("Travel Patterns and Routines", 
+                                value=profile_data.get('travel_routines', ''),
+                                help="Describe how the person typically travels, regular routes, routines, and travel preferences")
     
     # GDPR/Privacy confirmation
     st.write("### Data Protection")
     gdpr_consent = st.checkbox("I understand this information will be stored securely and used only for the purpose of supporting this person", 
-                              value=True if profile_data else False)
+                             value=True if profile_data else False)
     
     # Save button
     if st.button("Save Profile", type="primary", disabled=(not gdpr_consent)):
@@ -366,12 +502,19 @@ def profile_form():
         new_profile_data = {
             'name': name,
             'dob': dob.strftime('%Y-%m-%d') if dob else '',
+            'age': age,
             'nhs_number': nhs_number,
             'emergency_contact': emergency_contact,
-            'height': height,
+            'height': height,  # Formatted display height
+            'height_cm': height_cm,  # Numeric value for calculations
+            'weight': weight,  # Formatted display weight
+            'weight_kg': weight_kg,  # Numeric value for calculations
             'build': build,
             'hair': hair,
-            'eyes': eyes,
+            'hair_color': hair_color,
+            'hair_style': hair_style,
+            'eyes': eye_color,
+            'eye_color': eye_color,
             'distinguishing_features': distinguishing_features,
             'important_to_me': important_to_me,
             'how_to_support': how_to_support,
@@ -402,7 +545,7 @@ def profile_form():
         st.session_state.current_profile_id = profile_id
         
         # Refresh the page to show the updated profile
-        st.experimental_rerun()
+        st.rerun()  # Using st.rerun instead of experimental_rerun
 
 def missing_person_form():
     """Form for updating missing person information"""
@@ -418,48 +561,80 @@ def missing_person_form():
     # Missing person details
     col1, col2 = st.columns(2)
     with col1:
-        last_seen_date = st.date_input("Date Last Seen", value=datetime.datetime.now())
-        last_seen_time = st.time_input("Time Last Seen", value=datetime.datetime.now().time())
-        last_seen_location = st.text_input("Location Last Seen", value=profile_data.get('last_seen_location', ''))
+        last_seen_date = st.date_input("Date Last Seen", 
+                                     value=datetime.datetime.now(),
+                                     help="The date when the person was last seen")
+        
+        last_seen_time = st.time_input("Time Last Seen", 
+                                     value=datetime.datetime.now().time(),
+                                     help="The approximate time when the person was last seen")
+        
+        last_seen_location = st.text_input("Location Last Seen", 
+                                         value=profile_data.get('last_seen_location', ''),
+                                         help="The address or detailed description of where the person was last seen")
     
     with col2:
-        last_seen_wearing = st.text_area("Clothing When Last Seen", value=profile_data.get('last_seen_wearing', ''))
-        reference_number = st.text_input("Police Reference Number (if available)", value=profile_data.get('reference_number', ''))
+        last_seen_wearing = st.text_area("Clothing When Last Seen", 
+                                       value=profile_data.get('last_seen_wearing', ''),
+                                       help="Detailed description of what the person was wearing when last seen")
+        
+        reference_number = st.text_input("Police Reference Number (if available)", 
+                                       value=profile_data.get('reference_number', ''),
+                                       help="Any reference number provided by police for the missing person case")
     
     # Additional images for missing person poster
     st.write("### Additional Photos")
     st.write("Upload additional recent photos that can help identify the person")
     
-    additional_photos = st.file_uploader("Upload additional photos", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+    additional_photos = st.file_uploader("Upload additional photos", 
+                                       type=["jpg", "jpeg", "png"], 
+                                       accept_multiple_files=True,
+                                       help="Recent photos showing different angles, hairstyles, or clothing")
     
+    # Display existing additional photos
+    if profile_data.get('additional_images'):
+        st.write("Current additional photos:")
+        existing_photo_cols = st.columns(3)
+        for i, photo_path in enumerate(profile_data.get('additional_images', [])):
+            if os.path.exists(photo_path):
+                with existing_photo_cols[i % 3]:
+                    st.image(photo_path, width=150)
+                    st.caption(f"Photo {i+1}")
+    
+    # Display newly uploaded photos
     if additional_photos:
-        cols = st.columns(3)
+        st.write("New photos to be added:")
+        new_photo_cols = st.columns(3)
         for i, photo in enumerate(additional_photos):
-            with cols[i % 3]:
+            with new_photo_cols[i % 3]:
                 st.image(photo, width=150)
-                st.write(f"Photo {i+1}")
+                st.caption(f"New Photo {i+1}")
     
     # Short versions for poster
     st.write("### Additional Information for Missing Person Poster")
-    st.write("Please provide short, concise versions of key information for the poster")
+    st.write("Please provide short, concise versions of key information for the poster (limit to 1-2 sentences)")
     
     medical_info_short = st.text_input("Medical Information (short version)", 
                                      value=profile_data.get('medical_info_short', ''),
-                                     help="Brief summary of critical medical needs")
+                                     help="Brief summary of critical medical needs that emergency responders should know")
     
     communication_short = st.text_input("Communication (short version)", 
                                       value=profile_data.get('communication_short', ''),
-                                      help="Brief summary of how to communicate effectively")
+                                      help="Brief summary of how to communicate effectively with the person")
     
     places_might_go_short = st.text_input("Places They Might Go (short version)", 
                                         value=profile_data.get('places_might_go_short', ''),
-                                        help="Brief list of most likely locations")
+                                        help="Brief list of the most likely locations to check first")
     
     # Save button
     if st.button("Update Missing Person Information", type="primary"):
+        # Format the datetime for better display
+        last_seen_datetime = f"{last_seen_date.strftime('%d %B %Y')} at {last_seen_time.strftime('%H:%M')}"
+        
         # Update profile with missing person information
         profile_data['last_seen_date'] = last_seen_date.strftime('%Y-%m-%d')
         profile_data['last_seen_time'] = last_seen_time.strftime('%H:%M')
+        profile_data['last_seen_datetime'] = last_seen_datetime
         profile_data['last_seen_location'] = last_seen_location
         profile_data['last_seen_wearing'] = last_seen_wearing
         profile_data['reference_number'] = reference_number
@@ -469,7 +644,7 @@ def missing_person_form():
         
         # Save additional photos
         if additional_photos:
-            additional_image_paths = []
+            additional_image_paths = profile_data.get('additional_images', []) or []
             for photo in additional_photos:
                 image_path = save_uploaded_image(photo, profile_data['profile_id'], 'additional')
                 additional_image_paths.append(image_path)
@@ -479,6 +654,7 @@ def missing_person_form():
         # Save updated profile
         save_profile(profile_data)
         st.success("Missing person information updated successfully!")
+        st.rerun()  # Using st.rerun instead of experimental_rerun
 
 def view_generate_documents():
     """View and generate documents from profile"""
