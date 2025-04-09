@@ -138,4 +138,124 @@ This application is designed with UK GDPR compliance in mind:
 
 ## Customization
 
-You can customize the application appearance and behavior
+You can customize the application appearance and behavior by modifying the following files:
+
+### UI Customization
+
+- **config.py**: Update the icons, colors, and other UI constants
+- **.streamlit/config.toml**: Add this file to customize Streamlit's theme (an example is provided below)
+
+Example `.streamlit/config.toml`:
+```toml
+[theme]
+primaryColor = "#4CAF50"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+font = "sans serif"
+
+[server]
+enableCORS = false
+enableXsrfProtection = true
+maxUploadSize = 20
+
+[browser]
+gatherUsageStats = false
+```
+
+### Database Customization
+
+For production environments, you might want to use a more robust database like MySQL or PostgreSQL. To do this:
+
+1. Install the necessary database drivers:
+   ```bash
+   pip install pymysql  # For MySQL
+   # or
+   pip install psycopg2-binary  # For PostgreSQL
+   ```
+
+2. Update the database configuration in `config.py`
+
+3. Create the database with appropriate permissions:
+   ```sql
+   CREATE DATABASE profiles;
+   CREATE USER 'profiles_user'@'localhost' IDENTIFIED BY 'your_password';
+   GRANT ALL PRIVILEGES ON profiles.* TO 'profiles_user'@'localhost';
+   FLUSH PRIVILEGES;
+   ```
+
+## Security Considerations
+
+### Encryption Key Management
+
+The application generates an encryption key at runtime and stores it in the session state. For production deployments, you should:
+
+1. Generate a persistent encryption key
+2. Store it securely (e.g., using environment variables or Streamlit secrets)
+3. Update the `database.py` file to use this key
+
+Example:
+```python
+# In database.py
+encryption_key = os.environ.get('ENCRYPTION_KEY')
+if not encryption_key:
+    encryption_key = st.secrets.get('encryption_key')
+```
+
+### Access Control
+
+The application does not include user authentication. For production use, consider adding:
+
+1. User authentication with Streamlit Authenticator or another authentication mechanism
+2. Role-based access control to limit who can create, edit, or delete profiles
+3. Audit logging to track who has accessed or modified profiles
+
+## Troubleshooting
+
+### Database Issues
+
+If you encounter database errors:
+
+1. Check that the database exists and is accessible
+2. Verify that the user has appropriate permissions
+3. Look for error messages in the logs (in the `data/app.log` file)
+
+### PDF Generation Errors
+
+If you encounter errors when generating PDFs:
+
+1. Check that the ReportLab and FPDF libraries are installed correctly
+2. Verify that the profile contains all required fields
+3. Check that image paths are valid and images are accessible
+
+### Image Handling
+
+If images are not displaying correctly:
+
+1. Verify that the image files exist in the expected location
+2. Check that the file formats are supported (JPG, JPEG, PNG)
+3. Ensure the application has read permissions for the image files
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create a new branch (`git checkout -b feature/your-feature`)
+3. Make your changes
+4. Run tests and linting
+5. Commit your changes (`git commit -am 'Add some feature'`)
+6. Push to the branch (`git push origin feature/your-feature`)
+7. Create a new Pull Request
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
+
+## Author
+
+Created by Adam Vials Moore
+
+---
+
+This project is intended to support individuals with learning disabilities and their caregivers. It is not a replacement for professional advice or established safeguarding procedures.
