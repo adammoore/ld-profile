@@ -2,7 +2,11 @@
 Utility functions for the Learning Disability Profile application.
 
 This module provides utility functions for file handling, data processing,
-and other helper functionality used across the application.
+geolocation, map generation, and other helper functionality used across
+the application.
+
+Author: Adam Vials Moore
+License: Apache License 2.0
 """
 
 import os
@@ -15,11 +19,12 @@ from typing import Optional, Dict, Any, List, Tuple
 import streamlit as st
 from PIL import Image
 
-from config import PROFILE_DATA_DIR, IMAGES_DIR
+from config import PROFILE_DATA_DIR, IMAGES_DIR, MAP_SEARCH_RADIUS_METERS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def save_uploaded_image(uploaded_file, profile_id: str, image_type: str) -> Optional[str]:
     """
@@ -56,6 +61,7 @@ def save_uploaded_image(uploaded_file, profile_id: str, image_type: str) -> Opti
         logger.error(f"Error saving image: {str(e)}")
         return None
 
+
 def get_image_dimensions(image_path: str) -> Tuple[int, int]:
     """
     Get the dimensions of an image.
@@ -73,6 +79,7 @@ def get_image_dimensions(image_path: str) -> Tuple[int, int]:
         logger.error(f"Error getting image dimensions: {str(e)}")
         return (0, 0)
 
+
 def calculate_age(dob: datetime.date) -> int:
     """
     Calculate age from date of birth.
@@ -85,6 +92,7 @@ def calculate_age(dob: datetime.date) -> int:
     """
     today = datetime.date.today()
     return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+
 
 def format_height(height_cm: int) -> str:
     """
@@ -106,6 +114,7 @@ def format_height(height_cm: int) -> str:
         
     return f"{height_cm} cm ({int(feet)}' {inches}\")"
 
+
 def format_weight(weight_kg: int) -> str:
     """
     Format weight in kg to a display string with imperial conversion.
@@ -119,6 +128,7 @@ def format_weight(weight_kg: int) -> str:
     pounds = round(weight_kg * 2.2046)
     return f"{weight_kg} kg ({pounds} lbs)"
 
+
 def sanitize_filename(name: str) -> str:
     """
     Convert a string to a safe filename.
@@ -131,6 +141,7 @@ def sanitize_filename(name: str) -> str:
     """
     # Replace spaces with underscores and remove other invalid characters
     return "".join(c if c.isalnum() or c in ['-', '_'] else '_' for c in name.replace(' ', '_'))
+
 
 def validate_required_fields(data: Dict[str, Any], required_fields: List[str]) -> List[str]:
     """
@@ -149,6 +160,7 @@ def validate_required_fields(data: Dict[str, Any], required_fields: List[str]) -
             missing.append(field)
     return missing
 
+
 def get_profile_for_display(profile_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Prepare profile data for display, ensuring all expected fields are present.
@@ -165,7 +177,15 @@ def get_profile_for_display(profile_data: Dict[str, Any]) -> Dict[str, Any]:
         'dob': '',
         'age': '',
         'nhs_number': '',
-        'emergency_contact': '',
+        
+        # Contact information
+        'emergency_contact_name': '',
+        'emergency_contact_relationship': '',
+        'emergency_contact_mobile': '',
+        'emergency_contact_email': '',
+        'emergency_contact': '',  # Legacy field
+        
+        # Physical description
         'height': '',
         'height_cm': 170,
         'weight': '',
@@ -177,6 +197,8 @@ def get_profile_for_display(profile_data: Dict[str, Any]) -> Dict[str, Any]:
         'eyes': '',
         'eye_color': '',
         'distinguishing_features': '',
+        
+        # Profile sections
         'important_to_me': '',
         'how_to_support': '',
         'communication': '',
@@ -190,6 +212,7 @@ def get_profile_for_display(profile_data: Dict[str, Any]) -> Dict[str, Any]:
     # Create a new dict with defaults and override with actual values
     display_data = {**defaults, **profile_data}
     return display_data
+
 
 def cleanup_old_files(max_age_days: int = 30) -> int:
     """
@@ -221,9 +244,14 @@ def cleanup_old_files(max_age_days: int = 30) -> int:
     
     return count
 
+
 def generate_short_summary(text: str, max_words: int = 15) -> str:
     """
     Generate a shorter summary of a longer text.
+    
+    Creates a concise version of longer text by extracting the first
+    sentence or the first N words, suitable for display in posters
+    or summary views.
     
     Args:
         text: The original text to summarize
@@ -247,9 +275,13 @@ def generate_short_summary(text: str, max_words: int = 15) -> str:
     short_summary = ' '.join(words[:max_words]) + '...'
     return short_summary
 
+
 def extract_coordinates(location_text: str) -> Tuple[Optional[float], Optional[float]]:
     """
     Extract coordinates from location text if present.
+    
+    Parses location text to find latitude and longitude coordinates,
+    typically in the format "... (Coordinates: 51.5074, -0.1278)".
     
     Args:
         location_text: Location description that may contain coordinates
@@ -276,9 +308,14 @@ def extract_coordinates(location_text: str) -> Tuple[Optional[float], Optional[f
     
     return None, None
 
+
 def geocode_location(location_text: str) -> Tuple[Optional[float], Optional[float]]:
     """
     Geocode a location string to get coordinates.
+    
+    First attempts to extract coordinates from the text if present,
+    then falls back to geocoding the location description using
+    the Nominatim geocoding service.
     
     Args:
         location_text: Location description to geocode
@@ -289,7 +326,7 @@ def geocode_location(location_text: str) -> Tuple[Optional[float], Optional[floa
     try:
         # First try to extract coordinates if they're already in the text
         lat, lng = extract_coordinates(location_text)
-        if lat and lng:
+        if lat is not None and lng is not None:
             return lat, lng
         
         # Otherwise, try to geocode the location
@@ -327,9 +364,14 @@ def geocode_location(location_text: str) -> Tuple[Optional[float], Optional[floa
     
     return None, None
 
+
 def generate_location_map(location_text: str, width: int = 800, height: int = 500) -> Optional[str]:
     """
     Generate an HTML map for a location.
+    
+    Creates an interactive Folium map centered on the given location,
+    with a marker and a search radius circle, and returns the HTML
+    representation for embedding in a web page.
     
     Args:
         location_text: Location description to map
@@ -346,37 +388,3 @@ def generate_location_map(location_text: str, width: int = 800, height: int = 50
         except ImportError:
             logger.warning("Folium not installed, cannot generate map")
             return None
-        
-        # Try to get coordinates from the location text
-        lat, lng = geocode_location(location_text)
-        
-        if not lat or not lng:
-            return None
-        
-        # Create a map centered at the location
-        m = folium.Map(location=[lat, lng], zoom_start=15)
-        
-        # Add a marker for the location
-        folium.Marker(
-            [lat, lng],
-            popup=location_text,
-            tooltip="Last seen here",
-            icon=folium.Icon(color="red", icon="info-sign")
-        ).add_to(m)
-        
-        # Add a circle to indicate approximate area
-        folium.Circle(
-            radius=200,  # 200m radius around the point
-            location=[lat, lng],
-            color="red",
-            fill=True,
-            fill_color="red",
-            fill_opacity=0.1
-        ).add_to(m)
-        
-        # Return the HTML representation
-        return m._repr_html_()
-        
-    except Exception as e:
-        logger.error(f"Error generating map for location '{location_text}': {str(e)}")
-        return None
