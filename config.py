@@ -3,6 +3,9 @@ Configuration settings for the Learning Disability Profile application.
 
 This module contains configuration variables used throughout the application,
 including database settings, file paths, and application constants.
+
+Author: Adam Vials Moore
+License: Apache License 2.0
 """
 
 import os
@@ -11,7 +14,7 @@ from pathlib import Path
 
 # Application information
 APP_NAME = "Learning Disability Profile Creator"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 APP_AUTHOR = "Adam Vials Moore"
 APP_LICENSE = "Apache License 2.0"
 APP_FOOTER = f"© 2025 {APP_NAME} | GDPR Compliant | Apache License 2.0"
@@ -51,6 +54,7 @@ IMAGES_DIR.mkdir(exist_ok=True)
 BUILD_OPTIONS = ["Slim", "Average", "Athletic", "Heavy", "Other"]
 HAIR_COLOR_OPTIONS = ["Black", "Brown", "Blonde", "Red", "Grey", "White", "Other"]
 EYE_COLOR_OPTIONS = ["Brown", "Blue", "Green", "Hazel", "Grey", "Other"]
+RELATIONSHIP_OPTIONS = ["Parent", "Guardian", "Sibling", "Relative", "Carer", "Support Worker", "Teacher", "Social Worker", "Other"]
 
 # Physical attribute ranges
 HEIGHT_MIN_CM = 30
@@ -72,8 +76,17 @@ ICONS = {
     "error": "❌",
     "info": "ℹ️",
     "database": "💾",
+    "contact": "📞",
+    "location": "📍",
+    "map": "🗺️",
+    "medical": "🏥",
+    "camera": "📷",
 }
 
 # PDF generation settings
 PDF_PAGE_SIZE = (595.27, 841.89)  # A4 in points
 PDF_MARGIN = 72  # 1 inch margin in points
+
+# Map settings
+MAP_DEFAULT_ZOOM = 15
+MAP_SEARCH_RADIUS_METERS = 200
