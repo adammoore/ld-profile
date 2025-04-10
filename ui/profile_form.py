@@ -1,7 +1,12 @@
 """
 Profile form UI component for the Learning Disability Profile application.
 
-This module contains the UI for creating and editing profiles.
+This module contains the UI for creating and editing profiles, including
+form fields for personal details, emergency contacts, physical description,
+and support needs.
+
+Author: Adam Vials Moore
+License: Apache License 2.0
 """
 
 import datetime
@@ -10,17 +15,39 @@ import streamlit as st
 from typing import Dict, Any, Optional, List
 
 from config import (
-    ICONS, BUILD_OPTIONS, HAIR_COLOR_OPTIONS, EYE_COLOR_OPTIONS,
+    ICONS, BUILD_OPTIONS, HAIR_COLOR_OPTIONS, EYE_COLOR_OPTIONS, RELATIONSHIP_OPTIONS,
     HEIGHT_MIN_CM, HEIGHT_MAX_CM, HEIGHT_DEFAULT_CM,
     WEIGHT_MIN_KG, WEIGHT_MAX_KG, WEIGHT_DEFAULT_KG
 )
 from models import Profile, PROFILE_REQUIRED_FIELDS
-from utils import save_uploaded_image, calculate_age, format_height, format_weight
+from utils import (
+    save_uploaded_image, calculate_age, format_height, format_weight,
+    format_contact_info
+)
 from database import get_database_manager
 
 
 def render_profile_form() -> None:
-    """Render the profile creation/editing form."""
+    """
+    Render the profile creation/editing form.
+    
+    This function displays a comprehensive form for entering profile information,
+    including:
+    - Basic personal details
+    - Emergency contact information
+    - Physical description
+    - One-page profile information
+    - Herbert/Philomena Protocol details
+    
+    If a profile is currently selected, the form is pre-populated with the
+    existing data for editing. Otherwise, a new profile is created.
+    
+    The form includes validation and appropriate help text for each field.
+    When submitted, the data is saved to the database.
+    
+    Returns:
+        None
+    """
     st.write("## Personal Profile Information")
     st.write("Create a profile based on Herbert and Philomena protocols")
     
@@ -44,17 +71,19 @@ def render_profile_form() -> None:
     
     # Create a form for profile data entry
     with st.form("profile_form"):
-        # Basic information
+        # === BASIC INFORMATION SECTION ===
         st.write("### Basic Information")
         
         col1, col2 = st.columns(2)
         with col1:
+            # Name field
             name = st.text_input(
                 "Full Name", 
                 value=profile_data.get('name', ''),
                 help="The person's full legal name"
             )
             
+            # Date of birth field with age calculation
             dob = st.date_input(
                 "Date of Birth", 
                 value=None if not profile_data.get('dob') else pd.to_datetime(profile_data.get('dob')),
@@ -71,17 +100,65 @@ def render_profile_form() -> None:
             
             st.write(f"**Age:** {age_display}")
             
+            # NHS number field
             nhs_number = st.text_input(
                 "NHS Number", 
                 value=profile_data.get('nhs_number', ''),
                 help="10-digit NHS number for medical identification"
             )
             
-            emergency_contact = st.text_input(
-                "Emergency Contact Details", 
-                value=profile_data.get('emergency_contact', ''),
-                help="Name and phone number of primary emergency contact"
+            # === EMERGENCY CONTACT SECTION ===
+            st.write("### Emergency Contact Information")
+            st.write("This information will be used in case of emergency")
+            
+            # Contact name field
+            contact_name = st.text_input(
+                "Contact Name", 
+                value=profile_data.get('emergency_contact_name', ''),
+                help="Full name of emergency contact person"
             )
+            
+            # Relationship dropdown with custom option
+            selected_relationship = profile_data.get('emergency_contact_relationship', RELATIONSHIP_OPTIONS[0])
+            relationship_index = RELATIONSHIP_OPTIONS.index(selected_relationship) if selected_relationship in RELATIONSHIP_OPTIONS else 0
+            
+            relationship = st.selectbox(
+                "Relationship to Person", 
+                options=RELATIONSHIP_OPTIONS,
+                index=relationship_index,
+                help="Relationship of the emergency contact to the person"
+            )
+            
+            # Allow custom relationship if "Other" is selected
+            if relationship == "Other":
+                relationship = st.text_input(
+                    "Please specify relationship", 
+                    value=profile_data.get('emergency_contact_relationship_other', '')
+                )
+            
+            # Contact phone and email fields
+            contact_mobile = st.text_input(
+                "Mobile Number", 
+                value=profile_data.get('emergency_contact_mobile', ''),
+                help="Mobile phone number of emergency contact"
+            )
+            
+            contact_email = st.text_input(
+                "Email Address", 
+                value=profile_data.get('emergency_contact_email', ''),
+                help="Email address of emergency contact"
+            )
+            
+            # Format emergency contact information for display and backward compatibility
+            emergency_contact = ""
+            if contact_name:
+                emergency_contact += f"{contact_name}"
+            if relationship:
+                emergency_contact += f" ({relationship})"
+            if contact_mobile:
+                emergency_contact += f" - Mobile: {contact_mobile}"
+            if contact_email:
+                emergency_contact += f" - Email: {contact_email}"
         
         with col2:
             # Profile image upload
@@ -89,25 +166,29 @@ def render_profile_form() -> None:
             st.write("Upload a clear, recent photo of the person's face")
             profile_image_file = st.file_uploader(
                 "Upload a profile photo", 
-                type=["jpg", "jpeg", "png"]
+                type=["jpg", "jpeg", "png"],
+                help="Choose a clear photo showing the person's face to help with identification"
             )
             
             # Display current or new profile image
             if profile_image_file:
                 st.image(profile_image_file, width=150)
-            elif profile_data.get('profile_image'):
+                st.caption("New profile photo to be uploaded")
+            elif profile_data.get('profile_image') and os.path.exists(profile_data.get('profile_image')):
                 try:
                     st.image(profile_data.get('profile_image'), width=150)
+                    st.caption("Current profile photo")
                 except Exception as e:
                     st.error(f"Error displaying profile image: {str(e)}")
+                    st.info("Please upload a new profile photo")
         
-        # Physical description
+        # === PHYSICAL DESCRIPTION SECTION ===
         st.write("### Physical Description")
         st.write("These details help identify the person if they become missing")
         
         col1, col2 = st.columns(2)
         with col1:
-            # Height selector with cm
+            # Height selector with cm and imperial conversion
             height_cm = st.number_input(
                 "Height (cm)", 
                 min_value=HEIGHT_MIN_CM, 
@@ -119,7 +200,7 @@ def render_profile_form() -> None:
             # Show the formatted height display
             st.write(f"**Height display:** {format_height(height_cm)}")
             
-            # Weight selector with kg
+            # Weight selector with kg and imperial conversion
             weight_kg = st.number_input(
                 "Weight (kg)",
                 min_value=WEIGHT_MIN_KG, 
@@ -131,7 +212,7 @@ def render_profile_form() -> None:
             # Show the formatted weight display
             st.write(f"**Weight display:** {format_weight(weight_kg)}")
             
-            # Build dropdown
+            # Build dropdown with custom option
             selected_build = profile_data.get('build', BUILD_OPTIONS[0])
             build_index = BUILD_OPTIONS.index(selected_build) if selected_build in BUILD_OPTIONS else 0
             
@@ -144,14 +225,13 @@ def render_profile_form() -> None:
             
             # Custom build input if "Other" is selected
             if build == "Other":
-                build_other = st.text_input(
+                build = st.text_input(
                     "Please specify build", 
                     value=profile_data.get('build_other', '')
                 )
-                build = build_other  # Use the custom input as the build value
         
         with col2:
-            # Hair color dropdown
+            # Hair color dropdown with custom option
             selected_hair_color = profile_data.get('hair_color', HAIR_COLOR_OPTIONS[0])
             hair_color_index = HAIR_COLOR_OPTIONS.index(selected_hair_color) if selected_hair_color in HAIR_COLOR_OPTIONS else 0
             
@@ -164,20 +244,19 @@ def render_profile_form() -> None:
             
             # Custom hair color input if "Other" is selected
             if hair_color == "Other":
-                hair_color_other = st.text_input(
+                hair_color = st.text_input(
                     "Please specify hair color", 
                     value=profile_data.get('hair_color_other', '')
                 )
-                hair_color = hair_color_other  # Use the custom input as the hair color value
             
-            # Hair style
+            # Hair style field
             hair_style = st.text_input(
                 "Hair Style", 
                 value=profile_data.get('hair_style', ''),
                 help="Current hairstyle (e.g., short, long, curly, straight)"
             )
             
-            # Eye color dropdown
+            # Eye color dropdown with custom option
             selected_eye_color = profile_data.get('eye_color', EYE_COLOR_OPTIONS[0])
             eye_color_index = EYE_COLOR_OPTIONS.index(selected_eye_color) if selected_eye_color in EYE_COLOR_OPTIONS else 0
             
@@ -190,11 +269,10 @@ def render_profile_form() -> None:
             
             # Custom eye color input if "Other" is selected
             if eye_color == "Other":
-                eye_color_other = st.text_input(
+                eye_color = st.text_input(
                     "Please specify eye color", 
                     value=profile_data.get('eye_color_other', '')
                 )
-                eye_color = eye_color_other  # Use the custom input as the eye color value
         
         # Combine hair details for display
         hair = f"{hair_color} {hair_style}" if hair_style else hair_color
@@ -209,7 +287,7 @@ def render_profile_form() -> None:
             help="Birthmarks, scars, tattoos, or other noticeable features"
         )
         
-        # One-page profile sections
+        # === ONE-PAGE PROFILE SECTIONS ===
         st.write("### One-Page Profile Information")
         st.write("This information helps others understand and support the person effectively")
         
@@ -234,7 +312,7 @@ def render_profile_form() -> None:
             help="Describe communication methods, preferences, any communication aids used, and how the person expresses themselves"
         )
         
-        # Herbert/Philomena Protocol sections
+        # === HERBERT/PHILOMENA PROTOCOL SECTIONS ===
         st.write("### Additional Information (Herbert/Philomena Protocol)")
         st.write("This information is essential if the person becomes missing")
         
@@ -259,11 +337,12 @@ def render_profile_form() -> None:
             help="Describe how the person typically travels, regular routes, routines, and travel preferences"
         )
         
-        # GDPR/Privacy confirmation
+        # === GDPR/PRIVACY SECTION ===
         st.write("### Data Protection")
         gdpr_consent = st.checkbox(
             "I understand this information will be stored securely and used only for the purpose of supporting this person", 
-            value=bool(profile_data.get('gdpr_consent', False))
+            value=bool(profile_data.get('gdpr_consent', False)),
+            help="Consent is required to store this information under GDPR regulations"
         )
         
         # Submit button
@@ -275,7 +354,7 @@ def render_profile_form() -> None:
     
     # Process form submission
     if submit_button:
-        # Check required fields
+        # Validate required fields
         missing_fields = []
         if not name:
             missing_fields.append("Name")
@@ -294,7 +373,15 @@ def render_profile_form() -> None:
                 dob=dob,
                 age=age,
                 nhs_number=nhs_number,
-                emergency_contact=emergency_contact,
+                
+                # Detailed emergency contact information
+                emergency_contact_name=contact_name,
+                emergency_contact_relationship=relationship,
+                emergency_contact_mobile=contact_mobile,
+                emergency_contact_email=contact_email,
+                emergency_contact=emergency_contact,  # Combined format for backward compatibility
+                
+                # Physical description
                 height_cm=height_cm,
                 weight_kg=weight_kg,
                 build=build,
@@ -302,12 +389,18 @@ def render_profile_form() -> None:
                 hair_style=hair_style,
                 eye_color=eye_color,
                 distinguishing_features=distinguishing_features,
+                
+                # One-page profile information
                 important_to_me=important_to_me,
                 how_to_support=how_to_support,
                 communication=communication,
+                
+                # Herbert/Philomena protocol information
                 medical_info=medical_info,
                 places_might_go=places_might_go,
                 travel_routines=travel_routines,
+                
+                # Consent
                 gdpr_consent=gdpr_consent
             )
             
