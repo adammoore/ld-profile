@@ -141,7 +141,7 @@ def render_missing_person_form() -> None:
                         st.error(f"Error accessing geolocation: {str(e)}")
                         st.info("Please enter the location manually below.")
             else:
-            st.info("Geolocation is not available. Please enter the location manually.") 
+                st.info("Geolocation is not available. Please enter the location manually.") 
             
         # Show the location input field
         last_seen_location = st.text_input(
