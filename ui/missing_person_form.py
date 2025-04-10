@@ -1,12 +1,17 @@
 """
 Missing person form UI component for the Learning Disability Profile application.
 
-This module contains the UI for updating missing person information.
+This module contains the UI for updating missing person information, including
+last seen details, location information, additional photos, and key details
+for emergency responders.
+
+Author: Adam Vials Moore
+License: Apache License 2.0
 """
 
+import os
 import datetime
 import streamlit as st
-import os
 from typing import Dict, Any, List, Optional, Tuple
 
 from config import ICONS
@@ -23,7 +28,23 @@ except ImportError:
 
 
 def render_missing_person_form() -> None:
-    """Render the missing person information form."""
+    """
+    Render the missing person information form.
+    
+    This function displays a form for entering missing person information,
+    including:
+    - When and where the person was last seen
+    - What they were wearing
+    - Current location (using geolocation if available)
+    - Additional photos for identification
+    - Short summaries of key information for posters
+    
+    The form includes validation and appropriate help text for each field.
+    When submitted, the data is saved to the database.
+    
+    Returns:
+        None
+    """
     # Check if a profile is selected
     current_profile_id = st.session_state.get('current_profile_id')
     if not current_profile_id:
@@ -66,11 +87,13 @@ def render_missing_person_form() -> None:
     
     # Create form for missing person data entry
     with st.form("missing_person_form"):
+        # === WHEN AND WHERE LAST SEEN SECTION ===
         st.write("### When and Where Last Seen")
         st.write("This information is essential for finding the person")
         
         col1, col2 = st.columns(2)
         with col1:
+            # Date last seen field with appropriate default
             last_seen_date = st.date_input(
                 "Date Last Seen", 
                 value=datetime.datetime.now() if not profile_data.get('last_seen_date') else 
@@ -78,6 +101,7 @@ def render_missing_person_form() -> None:
                 help="The date when the person was last seen"
             )
             
+            # Time last seen field with appropriate default
             # Parse the time if it exists
             if profile_data.get('last_seen_time'):
                 try:
@@ -95,19 +119,21 @@ def render_missing_person_form() -> None:
             )
         
         with col2:
+            # Clothing description field
             last_seen_wearing = st.text_area(
                 "Clothing When Last Seen", 
                 value=profile_data.get('last_seen_wearing', ''),
                 help="Detailed description of what the person was wearing when last seen"
             )
             
+            # Police reference number field
             reference_number = st.text_input(
                 "Police Reference Number (if available)", 
                 value=profile_data.get('reference_number', ''),
                 help="Any reference number provided by police for the missing person case"
             )
         
-        # Location information with optional geolocation support
+        # === LOCATION INFORMATION SECTION ===
         st.write("### Location Information")
         
         # Geolocation widget if available
@@ -123,9 +149,9 @@ def render_missing_person_form() -> None:
                     help="Use your browser's geolocation to get your current coordinates"
                 )
             
+            # Get location from browser if checkbox is checked
             if use_current_location:
                 with location_col2:
-                    # Get location from browser
                     try:
                         loc = streamlit_geolocation()
                         if loc and isinstance(loc, dict) and 'latitude' in loc and 'longitude' in loc:
@@ -140,10 +166,11 @@ def render_missing_person_form() -> None:
                     except Exception as e:
                         st.error(f"Error accessing geolocation: {str(e)}")
                         st.info("Please enter the location manually below.")
-            else:
-                st.info("Geolocation is not available. Please enter the location manually.") 
-            
-        # Show the location input field
+        else:
+            # Show message if geolocation is not available
+            st.info("Geolocation is not available. Please enter the location manually.")
+        
+        # Location text input field
         last_seen_location = st.text_input(
             "Location Last Seen", 
             value=profile_data.get('last_seen_location', ''),
@@ -157,7 +184,7 @@ def render_missing_person_form() -> None:
             else:
                 last_seen_location = f"Coordinates: {location_lat:.6f}, {location_lng:.6f}"
         
-        # Additional images for missing person poster
+        # === ADDITIONAL PHOTOS SECTION ===
         st.write("### Additional Photos")
         st.write("Upload additional recent photos that can help identify the person")
         
@@ -168,7 +195,7 @@ def render_missing_person_form() -> None:
             help="Recent photos showing different angles, hairstyles, or clothing"
         )
         
-        # Display existing additional photos
+        # Display existing additional photos in a gallery
         existing_photos = profile_data.get('additional_images', [])
         if existing_photos:
             st.write("Current additional photos:")
@@ -187,7 +214,7 @@ def render_missing_person_form() -> None:
                         except Exception as e:
                             st.error(f"Error displaying photo: {str(e)}")
         
-        # Display newly uploaded photos
+        # Display newly uploaded photos in a gallery
         if additional_photos:
             st.write("New photos to be added:")
             
@@ -201,11 +228,11 @@ def render_missing_person_form() -> None:
                     st.image(photo, width=150)
                     st.caption(f"New Photo {i+1}")
         
-        # Short versions for poster
+        # === SHORT SUMMARIES SECTION ===
         st.write("### Additional Information for Missing Person Poster")
         st.write("Please provide short, concise versions of key information for the poster (limit to 1-2 sentences)")
         
-        # Generate short summaries from the full information
+        # Generate short summaries from the full information if not already provided
         default_medical_short = profile_data.get('medical_info_short', '')
         if not default_medical_short and profile_data.get('medical_info'):
             default_medical_short = generate_short_summary(profile_data.get('medical_info', ''))
@@ -240,12 +267,13 @@ def render_missing_person_form() -> None:
         # Submit button
         submit_button = st.form_submit_button(
             "Update Missing Person Information", 
-            type="primary"
+            type="primary",
+            help="Save the missing person information"
         )
     
     # Process form submission
     if submit_button:
-        # Check required fields
+        # Validate required fields
         missing_fields = []
         if not last_seen_date:
             missing_fields.append("Date Last Seen")
@@ -281,11 +309,13 @@ def render_missing_person_form() -> None:
                 
                 profile_data['additional_images'] = additional_image_paths
             
-            # Save updated profile
+            # Save updated profile to the database
             db_manager = get_database_manager()
             db_manager.save_profile(profile_data)
             
+            # Show success message
             st.success(f"{ICONS['success']} Missing person information updated successfully!")
             st.rerun()
         except Exception as e:
+            # Handle any errors during saving
             st.error(f"{ICONS['error']} Error updating missing person information: {str(e)}")
